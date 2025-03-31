@@ -129,18 +129,13 @@ export enum PaymentMethod {
 export interface Payment {
   id: string;
   loan: string;
-  loan_reference: string;
-  customer_name: string;
-  payment_reference: string;
   amount: number;
   payment_date: string;
-  payment_method: PaymentMethod;
-  payment_method_display: string;
-  received_by?: string;
-  received_by_name?: string;
+  receipt_number?: string;
+  payment_method: string;
   notes?: string;
   created_at: string;
-  updated_at: string;
+  created_by: string;
 }
 
 // Interaction types

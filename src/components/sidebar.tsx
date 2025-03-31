@@ -24,6 +24,21 @@ import {
   X,
 } from "lucide-react";
 
+// Define types for menu items
+interface SubMenuItem {
+  title: string;
+  href: string;
+  roles: UserRole[];
+}
+
+interface MenuItem {
+  title: string;
+  href: string;
+  icon: React.ReactNode;
+  roles: UserRole[];
+  subItems?: SubMenuItem[];
+}
+
 const Sidebar = () => {
   const { user, logout } = useAuth();
   const pathname = usePathname();
@@ -51,7 +66,7 @@ const Sidebar = () => {
 
   if (!user) return null;
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     {
       title: "Dashboard",
       href: "/dashboard",
@@ -76,6 +91,12 @@ const Sidebar = () => {
       roles: [UserRole.SUPER_MANAGER, UserRole.MANAGER],
     },
     {
+      title: "Groups",
+      href: "/groups",
+      icon: <Users className="h-5 w-5" />,
+      roles: [UserRole.SUPER_MANAGER],
+    },
+    {
       title: "Customers",
       href: "/customers",
       icon: <UserCheck className="h-5 w-5" />,
@@ -95,6 +116,32 @@ const Sidebar = () => {
         UserRole.MANAGER,
         UserRole.COLLECTION_OFFICER,
         UserRole.CALLING_AGENT,
+      ],
+      subItems: [
+        {
+          title: "All Loans",
+          href: "/loans",
+          roles: [
+            UserRole.SUPER_MANAGER,
+            UserRole.MANAGER,
+            UserRole.COLLECTION_OFFICER,
+            UserRole.CALLING_AGENT,
+          ],
+        },
+        {
+          title: "New Loan",
+          href: "/loans/new",
+          roles: [
+            UserRole.SUPER_MANAGER,
+            UserRole.MANAGER,
+            UserRole.COLLECTION_OFFICER,
+          ],
+        },
+        {
+          title: "Loan Reports",
+          href: "/reports/loans",
+          roles: [UserRole.SUPER_MANAGER, UserRole.MANAGER],
+        },
       ],
     },
     {
@@ -177,20 +224,44 @@ const Sidebar = () => {
             {menuItems
               .filter((item) => item.roles.includes(user.role))
               .map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                    pathname === item.href ||
-                      pathname.startsWith(`${item.href}/`)
-                      ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-muted"
+                <div key={item.href}>
+                  <Link
+                    href={item.href}
+                    className={cn(
+                      "flex items-center px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                      (pathname === item.href ||
+                        pathname.startsWith(`${item.href}/`)) &&
+                        !(item.subItems && pathname.startsWith(`${item.href}/`))
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-muted"
+                    )}
+                  >
+                    {item.icon}
+                    <span className="ml-3">{item.title}</span>
+                  </Link>
+
+                  {/* Sub-items */}
+                  {item.subItems && (
+                    <div className="ml-7 mt-1 space-y-1">
+                      {item.subItems
+                        .filter((subItem) => subItem.roles.includes(user.role))
+                        .map((subItem) => (
+                          <Link
+                            key={subItem.href}
+                            href={subItem.href}
+                            className={cn(
+                              "flex items-center px-3 py-1.5 rounded-md text-xs font-medium transition-colors",
+                              pathname === subItem.href
+                                ? "bg-accent text-accent-foreground"
+                                : "text-muted-foreground hover:bg-muted"
+                            )}
+                          >
+                            <span>{subItem.title}</span>
+                          </Link>
+                        ))}
+                    </div>
                   )}
-                >
-                  {item.icon}
-                  <span className="ml-3">{item.title}</span>
-                </Link>
+                </div>
               ))}
           </div>
 
