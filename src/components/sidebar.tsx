@@ -90,12 +90,12 @@ const Sidebar = () => {
       icon: <Network className="h-5 w-5" />,
       roles: [UserRole.SUPER_MANAGER, UserRole.MANAGER],
     },
-    {
-      title: "Groups",
-      href: "/groups",
-      icon: <Users className="h-5 w-5" />,
-      roles: [UserRole.SUPER_MANAGER],
-    },
+    // {
+    //   title: "Groups",
+    //   href: "/groups",
+    //   icon: <Users className="h-5 w-5" />,
+    //   roles: [UserRole.SUPER_MANAGER],
+    // },
     {
       title: "Customers",
       href: "/customers",
@@ -176,22 +176,22 @@ const Sidebar = () => {
         UserRole.CALLING_AGENT,
       ],
     },
-    {
-      title: "Reports",
-      href: "/reports",
-      icon: <BarChart className="h-5 w-5" />,
-      roles: [UserRole.SUPER_MANAGER, UserRole.MANAGER],
-    },
-    {
-      title: "Settings",
-      href: "/settings",
-      icon: <Settings className="h-5 w-5" />,
-      roles: [
-        UserRole.SUPER_MANAGER,
-        UserRole.MANAGER,
-        UserRole.COLLECTION_OFFICER,
-      ],
-    },
+    // {
+    //   title: "Reports",
+    //   href: "/reports",
+    //   icon: <BarChart className="h-5 w-5" />,
+    //   roles: [UserRole.SUPER_MANAGER, UserRole.MANAGER],
+    // },
+    // {
+    //   title: "Settings",
+    //   href: "/settings",
+    //   icon: <Settings className="h-5 w-5" />,
+    //   roles: [
+    //     UserRole.SUPER_MANAGER,
+    //     UserRole.MANAGER,
+    //     UserRole.COLLECTION_OFFICER,
+    //   ],
+    // },
   ];
 
   return (
