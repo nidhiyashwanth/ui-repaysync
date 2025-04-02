@@ -14,6 +14,7 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import React from "react";
 
 // UI Components
 import {
@@ -60,6 +61,10 @@ export default function LoanDetailsPage({
 }: {
   params: { id: string };
 }) {
+  // Use React.use to resolve the params promise
+  const resolvedParams = React.use(params);
+  const loanId = resolvedParams.id;
+
   const { user } = useAuth();
   const router = useRouter();
   const [loan, setLoan] = useState<Loan | null>(null);
@@ -70,11 +75,11 @@ export default function LoanDetailsPage({
     const fetchLoanData = async () => {
       try {
         setLoading(true);
-        const loanData = await loanService.getById(params.id);
+        const loanData = await loanService.getById(loanId);
         setLoan(loanData);
 
         // Fetch payments for this loan
-        const paymentsData = await loanService.getPayments(params.id);
+        const paymentsData = await loanService.getPayments(loanId);
         setPayments(paymentsData.results || []);
       } catch (error) {
         console.error("Error fetching loan details:", error);
@@ -85,7 +90,7 @@ export default function LoanDetailsPage({
     };
 
     fetchLoanData();
-  }, [params.id]);
+  }, [loanId]);
 
   // Check if user has permission to manage loans
   const canManageLoan =

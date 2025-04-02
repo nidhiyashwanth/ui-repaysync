@@ -27,7 +27,12 @@ export interface TokenRefreshResponse {
   access: string;
 }
 
-const API_URL = "http://localhost:8000/api/";
+// Use environment-aware API URL
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined" && window.location.hostname !== "localhost"
+    ? `https://repaysync.codeindia.tech/api/`
+    : "http://localhost:8000/api/");
 
 const api = axios.create({
   baseURL: API_URL,
@@ -377,6 +382,16 @@ export const loanService = {
     );
     return response.data;
   },
+  recordPayment: async (
+    id: string,
+    payment: CreatePaymentPayload
+  ): Promise<Payment> => {
+    const response = await api.post<Payment>(
+      `loans/${id}/record_payment/`,
+      payment
+    );
+    return response.data;
+  },
   approve: async (id: string, data: ApproveLoanPayload): Promise<Loan> => {
     const response = await api.post<Loan>(`loans/${id}/approve/`, data);
     return response.data;
@@ -484,6 +499,16 @@ export const interactionService = {
     interaction: CreateInteractionPayload
   ): Promise<Interaction> => {
     const response = await api.post<Interaction>("interactions/", interaction);
+    return response.data;
+  },
+  update: async (
+    id: string,
+    interaction: Partial<CreateInteractionPayload>
+  ): Promise<Interaction> => {
+    const response = await api.post<Interaction>(
+      `interactions/${id}/complete/`,
+      interaction
+    );
     return response.data;
   },
   createFollowUp: async (

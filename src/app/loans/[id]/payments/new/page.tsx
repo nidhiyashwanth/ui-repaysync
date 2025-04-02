@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react"; // <-- Import React
 import { useAuth } from "@/components/auth-provider";
-import { Loan, Payment, UserRole } from "@/lib/types";
-import { loanService } from "@/lib/api";
+import { Loan, Payment, PaymentMethod, User, UserRole } from "@/lib/types"; // Payment type isn't explicitly used but good to keep if needed later
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -23,8 +23,15 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Receipt } from "lucide-react";
 import Link from "next/link";
@@ -41,83 +48,123 @@ import { format } from "date-fns";
 import { cn, formatCurrency } from "@/lib/utils";
 import { CalendarIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  loanService,
+  customerService,
+  userService,
+  paymentService,
+} from "@/lib/api";
 
 // Define form validation schema
 const formSchema = z.object({
   amount: z
     .string()
     .min(1, "Payment amount is required")
-    .transform((val) => parseFloat(val)),
+    .refine((val) => !isNaN(parseFloat(val)) && parseFloat(val) > 0, {
+      message: "Amount must be a positive number",
+    }),
   payment_date: z.date(),
-  receipt_number: z.string().optional(),
   payment_method: z.string().min(1, "Payment method is required"),
+  receipt_number: z.string().optional(),
   received_by: z.string().optional(),
   notes: z.string().optional(),
 });
 
-export default function NewPaymentPage({ params }: { params: { id: string } }) {
+type FormValues = z.infer<typeof formSchema>;
+
+export default function NewPaymentPage() {
+  const { id } = useParams();
+  const loanId = id as string;
+
   const { user } = useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [staffMembers, setStaffMembers] = useState<
+    { id: string; name: string }[]
+  >([]);
 
   // Initialize form
-  const form = useForm<z.infer<typeof formSchema>>({
+  const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       amount: "",
       payment_date: new Date(),
-      receipt_number: "",
       payment_method: "",
-      received_by: "",
+      receipt_number: "",
+      received_by: user?.id || "",
       notes: "",
     },
   });
 
-  // Fetch loan data
+  // Fetch loan data and staff members
   useEffect(() => {
+    if (!loanId) return;
+
     const fetchData = async () => {
       try {
         setLoading(true);
 
         // Fetch the loan
-        const loanData = await loanService.getById(params.id);
+        const loanData = await loanService.getById(loanId);
         setLoan(loanData);
+
+        // Fetch users to populate received_by dropdown
+        const usersResponse = await userService.getAll();
+        const usersList = usersResponse.results.map((user) => ({
+          id: user.id,
+          name: `${user.first_name} ${user.last_name}`,
+        }));
+        setStaffMembers(usersList);
+
+        // Set default receiver to current user
+        if (user && !form.getValues("received_by")) {
+          form.setValue("received_by", user.id);
+        }
       } catch (error) {
-        console.error("Error fetching loan data:", error);
-        toast.error("Failed to load loan data");
-        router.push(`/loans/${params.id}`);
+        console.error("Error fetching data:", error);
+        toast.error("Failed to load data");
+        router.push(loanId ? `/loans/${loanId}` : "/loans");
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [params.id, router]);
+  }, [loanId, router, form, user]);
 
-  const onSubmit = async (values: z.infer<typeof formSchema>) => {
+  const onSubmit = async (values: FormValues) => {
+    if (!loanId) {
+      toast.error("Loan ID is missing. Cannot record payment.");
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
-      // Format dates to strings
+      // Prepare payload
       const payload = {
-        ...values,
-        loan: params.id,
+        loan: loanId,
+        amount: parseFloat(values.amount),
         payment_date: format(values.payment_date, "yyyy-MM-dd"),
-        received_by:
-          values.received_by || user?.first_name + " " + user?.last_name,
+        payment_method: values.payment_method,
+        receipt_number: values.receipt_number,
+        received_by: values.received_by,
+        notes: values.notes,
       };
 
-      // Record payment via API
-      await loanService.recordPayment(params.id, payload);
+      // Use paymentService to create a payment
+      await paymentService.create(payload);
       toast.success("Payment recorded successfully");
-      router.push(`/loans/${params.id}`);
+      router.push(`/loans/${loanId}`);
     } catch (error: any) {
-      const errorMessage =
-        error.response?.data?.detail || "Failed to record payment";
-      toast.error(errorMessage);
       console.error("Error recording payment:", error);
+      toast.error(
+        error.response?.data?.detail ||
+          error.response?.data?.message ||
+          "Failed to record payment"
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -130,34 +177,55 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
       user.role === UserRole.MANAGER ||
       user.role === UserRole.COLLECTION_OFFICER);
 
+  const backLinkHref = loanId ? `/loans/${loanId}` : "/loans";
+
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/loans/${params.id}`}>
+            <Link href={backLinkHref}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
           <h1 className="text-3xl font-bold">Record Payment</h1>
         </div>
 
+        {/* Loan Summary Skeleton */}
         <Card>
           <CardHeader>
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-72" />
+            <Skeleton className="h-7 w-40" />
+            <Skeleton className="h-4 w-56" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, i) => (
+                <div key={i}>
+                  <Skeleton className="h-4 w-24 mb-1" />
+                  <Skeleton className="h-5 w-32" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Payment Form Skeleton */}
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-4 w-40" />
           </CardHeader>
           <CardContent className="space-y-6">
-            {Array.from({ length: 4 }).map((_, i) => (
+            {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="space-y-2">
                 <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-full" />
+                <Skeleton className="h-9 w-full" />
               </div>
             ))}
           </CardContent>
-          <CardFooter>
-            <Skeleton className="h-10 w-20 mr-2" />
+          <CardFooter className="flex justify-end gap-2">
             <Skeleton className="h-10 w-20" />
+            <Skeleton className="h-10 w-32" />
           </CardFooter>
         </Card>
       </div>
@@ -169,7 +237,7 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/loans/${params.id}`}>
+            <Link href={backLinkHref}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -179,11 +247,11 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
           <CardContent className="py-10 text-center">
             <p className="text-muted-foreground">
               {!loan
-                ? "Loan not found"
-                : "You don't have permission to record payments"}
+                ? "Loan not found or could not be loaded."
+                : "You don't have permission to record payments for this loan."}
             </p>
             <Button asChild className="mt-4">
-              <Link href={`/loans/${params.id}`}>Return to Loan Details</Link>
+              <Link href={backLinkHref}>Return to Loan Details</Link>
             </Button>
           </CardContent>
         </Card>
@@ -195,11 +263,13 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/loans/${params.id}`}>
+          <Link href={backLinkHref}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
-        <h1 className="text-3xl font-bold">Record Payment</h1>
+        <h1 className="text-3xl font-bold">
+          Record Payment for Loan {loan.loan_reference}
+        </h1>
       </div>
 
       <Form {...form}>
@@ -208,36 +278,57 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
           <Card>
             <CardHeader>
               <div className="flex items-center gap-2">
-                <Receipt className="h-6 w-6 text-primary" />
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="currentColor"
+                  className="w-6 h-6 text-primary"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.625 1.5c-1.036 0-1.875.84-1.875 1.875v17.25c0 1.035.84 1.875 1.875 1.875h12.75c1.035 0 1.875-.84 1.875-1.875V12.75A3.75 3.75 0 0 0 16.5 9h-1.875a1.875 1.875 0 0 1-1.875-1.875V5.25A3.75 3.75 0 0 0 9 1.5H5.625ZM7.5 15a.75.75 0 0 1 .75-.75h7.5a.75.75 0 0 1 0 1.5h-7.5A.75.75 0 0 1 7.5 15Zm.75 2.25a.75.75 0 0 0 0 1.5H12a.75.75 0 0 0 0-1.5H8.25Z"
+                    clipRule="evenodd"
+                  />
+                  <path d="M12.971 1.816A5.23 5.23 0 0 1 15.75 1.5h.75a.75.75 0 0 1 .75.75v3.75c0 .68.55 1.25 1.25 1.25h3.75a.75.75 0 0 1 .75.75v.75c0 .656-.217 1.283-.625 1.801L12.97 1.816Z" />
+                </svg>
                 <CardTitle>Loan Summary</CardTitle>
               </div>
-              <CardDescription>Loan details for reference</CardDescription>
+              <CardDescription>
+                Reference: {loan.loan_reference} | Customer:{" "}
+                {loan.customer_name}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">
                     Reference
                   </p>
-                  <p>{loan.reference}</p>
+                  <p className="font-medium">{loan.loan_reference}</p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">
                     Status
                   </p>
-                  <p>{loan.status}</p>
+                  <p className="font-medium capitalize">
+                    {loan.status_display}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">
                     Principal Amount
                   </p>
-                  <p>{formatCurrency(loan.principal_amount)}</p>
+                  <p className="font-medium">
+                    {formatCurrency(loan.principal_amount)}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">
                     Remaining Balance
                   </p>
-                  <p>{formatCurrency(loan.remaining_balance)}</p>
+                  <p className="font-medium">
+                    {formatCurrency(loan.remaining_balance)}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -250,7 +341,9 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                 <Receipt className="h-6 w-6 text-primary" />
                 <CardTitle>Payment Information</CardTitle>
               </div>
-              <CardDescription>Enter payment details</CardDescription>
+              <CardDescription>
+                Enter the details for this payment
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
               {/* Payment Amount */}
@@ -269,7 +362,7 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                       />
                     </FormControl>
                     <FormDescription>
-                      The amount received from the customer
+                      The amount received from the customer. Must be positive.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -281,7 +374,7 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                 control={form.control}
                 name="payment_date"
                 render={({ field }) => (
-                  <FormItem className="flex flex-col">
+                  <FormItem className="flex flex-col pt-2">
                     <FormLabel>Payment Date *</FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
@@ -307,12 +400,14 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
+                          disabled={(date) => date > new Date()}
                           initialFocus
                         />
                       </PopoverContent>
                     </Popover>
                     <FormDescription>
-                      The date when the payment was received
+                      The date when the payment was received. Cannot be in the
+                      future.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -326,12 +421,31 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Payment Method *</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Cash, Bank Transfer, Mobile Money, etc."
-                        {...field}
-                      />
-                    </FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select payment method" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value={PaymentMethod.CASH}>Cash</SelectItem>
+                        <SelectItem value={PaymentMethod.BANK_TRANSFER}>
+                          Bank Transfer
+                        </SelectItem>
+                        <SelectItem value={PaymentMethod.MOBILE_MONEY}>
+                          Mobile Money
+                        </SelectItem>
+                        <SelectItem value={PaymentMethod.CHEQUE}>
+                          Cheque
+                        </SelectItem>
+                        <SelectItem value={PaymentMethod.OTHER}>
+                          Other
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                     <FormDescription>How the payment was made</FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -347,13 +461,11 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                     <FormLabel>Receipt Number</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Enter receipt reference if available"
+                        placeholder="Optional: Enter receipt reference"
                         {...field}
+                        value={field.value || ""}
                       />
                     </FormControl>
-                    <FormDescription>
-                      Optional: Reference number for the receipt
-                    </FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -366,14 +478,25 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Received By</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Enter the name of the person receiving the payment"
-                        {...field}
-                      />
-                    </FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select staff member" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {staffMembers.map((staff) => (
+                          <SelectItem key={staff.id} value={staff.id}>
+                            {staff.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <FormDescription>
-                      Optional: The name of the person receiving the payment
+                      The staff member who received the payment
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -389,8 +512,9 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                     <FormLabel>Notes</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Any additional information about this payment"
+                        placeholder="Optional: Any additional information about this payment"
                         {...field}
+                        value={field.value || ""}
                         rows={3}
                       />
                     </FormControl>
@@ -399,15 +523,19 @@ export default function NewPaymentPage({ params }: { params: { id: string } }) {
                 )}
               />
             </CardContent>
-            <CardFooter className="flex justify-between">
+            <CardFooter className="flex justify-end gap-2">
               <Button
+                type="button"
                 variant="outline"
-                onClick={() => router.push(`/loans/${params.id}`)}
+                onClick={() => router.push(backLinkHref)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                disabled={isSubmitting || !form.formState.isDirty}
+              >
                 {isSubmitting ? "Processing..." : "Record Payment"}
               </Button>
             </CardFooter>

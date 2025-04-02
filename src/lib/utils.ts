@@ -25,6 +25,15 @@ export function formatDateTime(date: string | Date | undefined | null): string {
   });
 }
 
+export function formatTime(date: string | Date | undefined | null): string {
+  if (!date) return "-";
+  return new Date(date).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "numeric",
+    hour12: true,
+  });
+}
+
 export function formatCurrency(
   amount: number | string | undefined | null
 ): string {

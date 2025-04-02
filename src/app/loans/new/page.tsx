@@ -102,7 +102,7 @@ export default function NewLoanPage() {
       disbursement_date: null,
       first_payment_date: null,
       maturity_date: null,
-      assigned_officer: user?.id,
+      assigned_officer: user?.id ? user.id.toString() : "",
       notes: "",
     },
   });

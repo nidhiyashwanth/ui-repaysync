@@ -8,6 +8,7 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import React from "react";
 
 // UI Components
 import {
@@ -51,6 +52,10 @@ export default function CustomerDetailsPage({
 }: {
   params: { id: string };
 }) {
+  // Use React.use to resolve the params promise
+  const resolvedParams = React.use(params);
+  const customerId = resolvedParams.id;
+
   const { user } = useAuth();
   const router = useRouter();
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -60,27 +65,57 @@ export default function CustomerDetailsPage({
   // Fetch customer data
   useEffect(() => {
     const fetchCustomerData = async () => {
+      // Ensure customerId is available before fetching
+      if (!customerId) {
+        console.log("Customer ID not available yet.");
+        setLoading(false); // Stop loading if ID is missing
+        return;
+      }
+
       try {
         setLoading(true);
+        setCustomer(null); // Reset customer on new ID fetch
+        setLoans([]); // Reset loans on new ID fetch
 
         // Fetch customer details
-        const customerData = await customerService.getById(params.id);
+        const customerData = await customerService.getById(customerId);
         setCustomer(customerData);
 
         // Fetch customer loans
-        const loansData = await customerService.getLoans(params.id);
-        setLoans(loansData.results);
+        const loansData = await customerService.getLoans(customerId);
+
+        // --- Add safety check ---
+        if (loansData && Array.isArray(loansData.results)) {
+          setLoans(loansData.results);
+        } else {
+          // Log a warning if the API response structure is unexpected
+          console.warn(
+            "Loans data received from API is not in the expected format (expected { results: [] }):",
+            loansData
+          );
+          setLoans([]); // Default to an empty array if 'results' is missing or not an array
+        }
+        // --- End safety check ---
       } catch (error) {
-        console.error("Error fetching customer data:", error);
-        toast.error("Failed to load customer details");
-        router.push("/customers");
+        console.error(
+          "Error fetching customer data for ID:",
+          customerId,
+          error
+        );
+        toast.error("Failed to load customer details or loans.");
+        // Reset state on error as well to be safe
+        setCustomer(null);
+        setLoans([]);
+        // Consider whether navigating away is always the best UX here.
+        // Maybe display an error message within the page instead?
+        // router.push("/customers");
       } finally {
         setLoading(false);
       }
     };
 
     fetchCustomerData();
-  }, [params.id, router]);
+  }, [customerId, router]); // Dependency array is correct
 
   // Check if user has permission to manage customers
   const canManageCustomer =

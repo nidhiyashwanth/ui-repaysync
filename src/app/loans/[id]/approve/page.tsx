@@ -39,6 +39,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
+import React from "react";
 
 // Define form validation schema
 const formSchema = z.object({
@@ -56,6 +57,10 @@ export default function ApproveLoanPage({
 }: {
   params: { id: string };
 }) {
+  // Use React.use to resolve the params promise
+  const resolvedParams = React.use(params);
+  const loanId = resolvedParams.id;
+
   const { user } = useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -79,19 +84,19 @@ export default function ApproveLoanPage({
         setLoading(true);
 
         // Fetch the loan
-        const loanData = await loanService.getById(params.id);
+        const loanData = await loanService.getById(loanId);
         setLoan(loanData);
       } catch (error) {
         console.error("Error fetching loan data:", error);
         toast.error("Failed to load loan data");
-        router.push(`/loans/${params.id}`);
+        router.push(`/loans/${loanId}`);
       } finally {
         setLoading(false);
       }
     };
 
     fetchData();
-  }, [params.id, router]);
+  }, [loanId, router]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
@@ -105,9 +110,9 @@ export default function ApproveLoanPage({
       };
 
       // Approve loan via API
-      await loanService.approve(params.id, payload);
+      await loanService.approve(loanId, payload);
       toast.success("Loan approved successfully");
-      router.push(`/loans/${params.id}`);
+      router.push(`/loans/${loanId}`);
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.detail || "Failed to approve loan";
@@ -129,7 +134,7 @@ export default function ApproveLoanPage({
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/loans/${params.id}`}>
+            <Link href={`/loans/${loanId}`}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -163,7 +168,7 @@ export default function ApproveLoanPage({
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/loans/${params.id}`}>
+            <Link href={`/loans/${loanId}`}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -179,7 +184,7 @@ export default function ApproveLoanPage({
                 : "You don't have permission to approve loans"}
             </p>
             <Button asChild className="mt-4">
-              <Link href={`/loans/${params.id}`}>Return to Loan Details</Link>
+              <Link href={`/loans/${loanId}`}>Return to Loan Details</Link>
             </Button>
           </CardContent>
         </Card>
@@ -191,7 +196,7 @@ export default function ApproveLoanPage({
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/loans/${params.id}`}>
+          <Link href={`/loans/${loanId}`}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -371,7 +376,7 @@ export default function ApproveLoanPage({
             <CardFooter className="flex justify-between">
               <Button
                 variant="outline"
-                onClick={() => router.push(`/loans/${params.id}`)}
+                onClick={() => router.push(`/loans/${loanId}`)}
                 disabled={isSubmitting}
               >
                 Cancel

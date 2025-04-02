@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useEffect, useState } from "react";
 import { useAuth } from "@/components/auth-provider";
 import { Gender, UserRole, User, Customer } from "@/lib/types";
@@ -88,6 +89,10 @@ export default function EditCustomerPage({
 }: {
   params: { id: string };
 }) {
+  // Unwrap params with React.use()
+  const resolvedParams = React.use(params);
+  const customerId = resolvedParams.id;
+
   const { user } = useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,8 +130,8 @@ export default function EditCustomerPage({
       try {
         setLoading(true);
 
-        // Fetch the customer to edit
-        const fetchedCustomer = await customerService.getById(params.id);
+        // Fetch the customer to edit - use customerId instead of params.id
+        const fetchedCustomer = await customerService.getById(customerId);
         setCustomerToEdit(fetchedCustomer);
 
         // Fetch collection officers for assignment
@@ -173,7 +178,7 @@ export default function EditCustomerPage({
     };
 
     fetchData();
-  }, [params.id, form, router]);
+  }, [customerId, form, router]);
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     try {
@@ -187,9 +192,9 @@ export default function EditCustomerPage({
           : undefined,
       };
 
-      await customerService.update(params.id, payload);
+      await customerService.update(customerId, payload);
       toast.success("Customer updated successfully");
-      router.push(`/customers/${params.id}`);
+      router.push(`/customers/${customerId}`);
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.detail || "Failed to update customer";
@@ -212,7 +217,7 @@ export default function EditCustomerPage({
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/customers/${params.id}`}>
+            <Link href={`/customers/${customerId}`}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -246,7 +251,7 @@ export default function EditCustomerPage({
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/customers/${params.id}`}>
+            <Link href={`/customers/${customerId}`}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -260,7 +265,7 @@ export default function EditCustomerPage({
                 : "You don't have permission to edit customers"}
             </p>
             <Button asChild className="mt-4">
-              <Link href={`/customers/${params.id}`}>
+              <Link href={`/customers/${customerId}`}>
                 Return to Customer Details
               </Link>
             </Button>
@@ -274,7 +279,7 @@ export default function EditCustomerPage({
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/customers/${params.id}`}>
+          <Link href={`/customers/${customerId}`}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -633,7 +638,7 @@ export default function EditCustomerPage({
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
-                            <SelectItem value="">None</SelectItem>
+                            <SelectItem value="none">None</SelectItem>
                             {collectionOfficers.map((officer) => (
                               <SelectItem key={officer.id} value={officer.id}>
                                 {officer.first_name} {officer.last_name}
@@ -692,7 +697,7 @@ export default function EditCustomerPage({
             <CardFooter className="flex justify-between">
               <Button
                 variant="outline"
-                onClick={() => router.push(`/customers/${params.id}`)}
+                onClick={() => router.push(`/customers/${customerId}`)}
                 disabled={isSubmitting}
               >
                 Cancel

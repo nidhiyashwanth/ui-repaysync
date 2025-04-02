@@ -144,16 +144,16 @@ const Sidebar = () => {
         },
       ],
     },
-    {
-      title: "Payments",
-      href: "/payments",
-      icon: <CreditCard className="h-5 w-5" />,
-      roles: [
-        UserRole.SUPER_MANAGER,
-        UserRole.MANAGER,
-        UserRole.COLLECTION_OFFICER,
-      ],
-    },
+    // {
+    //   title: "Payments",
+    //   href: "/payments",
+    //   icon: <CreditCard className="h-5 w-5" />,
+    //   roles: [
+    //     UserRole.SUPER_MANAGER,
+    //     UserRole.MANAGER,
+    //     UserRole.COLLECTION_OFFICER,
+    //   ],
+    // },
     {
       title: "Interactions",
       href: "/interactions",

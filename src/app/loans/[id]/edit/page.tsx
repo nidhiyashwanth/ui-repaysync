@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react"; // <-- Import React
 import { useAuth } from "@/components/auth-provider";
 import {
   Customer,
@@ -58,7 +58,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 // Define form validation schema
 const formSchema = z.object({
-  customer: z.string().min(1, "Customer is required"),
+  // customer: z.string().min(1, "Customer is required"), // Original - changed to number below
+  customer: z.number().min(1, "Customer is required"),
   principal_amount: z
     .string()
     .min(1, "Principal amount is required")
@@ -78,11 +79,17 @@ const formSchema = z.object({
   disbursement_date: z.date().nullable().optional(),
   first_payment_date: z.date().nullable().optional(),
   maturity_date: z.date().nullable().optional(),
-  assigned_officer: z.string().optional(),
+  assigned_officer: z.string().optional(), // Keep as string for Select value
   notes: z.string().optional(),
 });
 
+// Note: The prop type describes the *resolved* params object
 export default function EditLoanPage({ params }: { params: { id: string } }) {
+  // --- Use React.use to resolve the params promise ---
+  const resolvedParams = React.use(params);
+  const loanId = resolvedParams.id; // Get the actual ID
+  // --- End change ---
+
   const { user } = useAuth();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -95,7 +102,8 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      customer: "",
+      // customer: "" - will be set async, // Original - changed type
+      customer: 0, // Use 0 or another invalid number as placeholder before fetch
       principal_amount: "",
       interest_rate: "",
       term_months: "",
@@ -106,7 +114,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
       disbursement_date: null,
       first_payment_date: null,
       maturity_date: null,
-      assigned_officer: user?.id,
+      assigned_officer: "", // Default to empty string
       notes: "",
     },
   });
@@ -114,11 +122,14 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
   // Fetch loan data and customers
   useEffect(() => {
     const fetchData = async () => {
+      // Don't run if loanId isn't available yet (React.use might suspend)
+      if (!loanId) return;
+
       try {
         setLoading(true);
 
-        // Fetch the loan to edit
-        const loanData = await loanService.getById(params.id);
+        // Fetch the loan to edit - Use resolved loanId
+        const loanData = await loanService.getById(loanId);
         setLoan(loanData);
 
         // Fetch customers for the dropdown
@@ -136,7 +147,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
 
         // Set form values from loan data
         form.reset({
-          customer: loanData.customer,
+          customer: loanData.customer, // Assuming loanData.customer is the ID (number)
           principal_amount: String(loanData.principal_amount),
           interest_rate: String(loanData.interest_rate),
           term_months: String(loanData.term_months),
@@ -147,12 +158,16 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
           disbursement_date: parseDate(loanData.disbursement_date),
           first_payment_date: parseDate(loanData.first_payment_date),
           maturity_date: parseDate(loanData.maturity_date),
-          assigned_officer: loanData.assigned_officer || "",
+          // Ensure assigned_officer is a string for the Select component
+          assigned_officer: loanData.assigned_officer
+            ? String(loanData.assigned_officer)
+            : "",
           notes: loanData.notes || "",
         });
       } catch (error) {
         console.error("Error fetching data:", error);
         toast.error("Failed to load loan data");
+        // Use resolved loanId if redirecting back, though just going to /loans might be safer
         router.push("/loans");
       } finally {
         setLoading(false);
@@ -160,30 +175,50 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
     };
 
     fetchData();
-  }, [params.id, form, router]);
+    // Use resolved loanId in the dependency array
+  }, [loanId, form, router]); // <-- Use loanId here
 
   // Helper to parse date string to Date object
   const parseDate = (dateString: string | null | undefined): Date | null => {
     if (!dateString) return null;
     try {
+      // Assuming API returns YYYY-MM-DD format
       return parse(dateString, "yyyy-MM-dd", new Date());
     } catch (error) {
-      console.error("Error parsing date:", error);
-      return null;
+      console.error("Error parsing date:", dateString, error);
+      // Try parsing directly if format is different (e.g., ISO string)
+      try {
+        const parsed = new Date(dateString);
+        if (!isNaN(parsed.getTime())) {
+          return parsed;
+        }
+      } catch (directParseError) {
+        console.error("Error parsing date directly:", directParseError);
+      }
+      return null; // Return null if parsing fails
     }
   };
 
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
+    // Ensure loanId is available before submitting
+    if (!loanId) {
+      toast.error("Loan ID is missing. Cannot update.");
+      return;
+    }
     try {
       setIsSubmitting(true);
 
-      // Format dates to strings
+      // Format dates to strings (YYYY-MM-DD)
       const payload = {
         ...values,
+        // Convert assigned_officer back to number if it's not empty, otherwise undefined/null
+        assigned_officer: values.assigned_officer
+          ? parseInt(values.assigned_officer, 10)
+          : null,
         application_date: format(values.application_date, "yyyy-MM-dd"),
         approval_date: values.approval_date
           ? format(values.approval_date, "yyyy-MM-dd")
-          : undefined,
+          : undefined, // Use undefined or null based on API expectation for optional fields
         disbursement_date: values.disbursement_date
           ? format(values.disbursement_date, "yyyy-MM-dd")
           : undefined,
@@ -195,9 +230,11 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
           : undefined,
       };
 
-      await loanService.update(params.id, payload);
+      // Use resolved loanId for the update
+      await loanService.update(loanId, payload);
       toast.success("Loan updated successfully");
-      router.push(`/loans/${params.id}`);
+      // Use resolved loanId for navigation
+      router.push(`/loans/${loanId}`);
     } catch (error: any) {
       const errorMessage =
         error.response?.data?.detail || "Failed to update loan";
@@ -215,46 +252,58 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
       user.role === UserRole.MANAGER ||
       user.role === UserRole.COLLECTION_OFFICER);
 
+  // Use resolved loanId for links and checks
+  const backLinkHref = loanId ? `/loans/${loanId}` : "/loans";
+
   if (loading) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/loans/${params.id}`}>
+            {/* Use placeholder link if loanId not ready */}
+            <Link href={backLinkHref}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
           <h1 className="text-3xl font-bold">Edit Loan</h1>
         </div>
 
+        {/* Skeleton Loader remains the same */}
         <Card>
           <CardHeader>
             <Skeleton className="h-8 w-48" />
             <Skeleton className="h-4 w-72" />
           </CardHeader>
           <CardContent className="space-y-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="space-y-2">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-8 w-full" />
-              </div>
-            ))}
+            {Array.from({ length: 8 }).map(
+              (
+                _,
+                i // Increased count slightly for more fields
+              ) => (
+                <div key={i} className="space-y-2">
+                  <Skeleton className="h-4 w-24" />
+                  <Skeleton className="h-9 w-full" />{" "}
+                  {/* Adjusted height for inputs/selects */}
+                </div>
+              )
+            )}
           </CardContent>
           <CardFooter>
             <Skeleton className="h-10 w-20 mr-2" />
-            <Skeleton className="h-10 w-20" />
+            <Skeleton className="h-10 w-24" /> {/* Adjusted width */}
           </CardFooter>
         </Card>
       </div>
     );
   }
 
+  // Use resolved loanId for links and checks
   if (!canEditLoan || !loan) {
     return (
       <div className="space-y-6">
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="icon" asChild>
-            <Link href={`/loans/${params.id}`}>
+            <Link href={backLinkHref}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -264,11 +313,11 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
           <CardContent className="py-10 text-center">
             <p className="text-muted-foreground">
               {!loan
-                ? "Loan not found"
-                : "You don't have permission to edit loans"}
+                ? "Loan not found or could not be loaded." // Adjusted message
+                : "You don't have permission to edit loans."}
             </p>
             <Button asChild className="mt-4">
-              <Link href={`/loans/${params.id}`}>Return to Loan Details</Link>
+              <Link href={backLinkHref}>Return to Loan Details</Link>
             </Button>
           </CardContent>
         </Card>
@@ -280,7 +329,8 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
     <div className="space-y-6">
       <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" asChild>
-          <Link href={`/loans/${params.id}`}>
+          {/* Use resolved loanId */}
+          <Link href={backLinkHref}>
             <ArrowLeft className="h-4 w-4" />
           </Link>
         </Button>
@@ -307,9 +357,13 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                   render={({ field }) => (
                     <FormItem className="sm:col-span-2">
                       <FormLabel>Customer *</FormLabel>
+                      {/* Ensure value passed to Select is string */}
                       <Select
-                        onValueChange={field.onChange}
-                        value={field.value}
+                        onValueChange={(value) =>
+                          field.onChange(parseInt(value))
+                        } // Convert back to number for form state
+                        value={String(field.value || "")} // Ensure value is string, handle 0 or undefined
+                        disabled={!customers.length} // Disable if customers haven't loaded
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -317,8 +371,19 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
+                          {/* Add placeholder/loading state if needed */}
+                          {!customers.length && (
+                            <SelectItem value="" disabled>
+                              Loading customers...
+                            </SelectItem>
+                          )}
                           {customers.map((customer) => (
-                            <SelectItem key={customer.id} value={customer.id}>
+                            <SelectItem
+                              key={customer.id}
+                              value={String(customer.id)}
+                            >
+                              {" "}
+                              {/* Value must be string */}
                               {customer.first_name} {customer.last_name} (
                               {customer.primary_phone})
                             </SelectItem>
@@ -348,22 +413,13 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value={LoanStatus.PENDING}>
-                          Pending
-                        </SelectItem>
-                        <SelectItem value={LoanStatus.ACTIVE}>
-                          Active
-                        </SelectItem>
-                        <SelectItem value={LoanStatus.PAID}>Paid</SelectItem>
-                        <SelectItem value={LoanStatus.DEFAULTED}>
-                          Defaulted
-                        </SelectItem>
-                        <SelectItem value={LoanStatus.RESTRUCTURED}>
-                          Restructured
-                        </SelectItem>
-                        <SelectItem value={LoanStatus.WRITTEN_OFF}>
-                          Written Off
-                        </SelectItem>
+                        {Object.values(LoanStatus).map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {/* Simple Capitalization for display */}
+                            {status.charAt(0).toUpperCase() +
+                              status.slice(1).toLowerCase()}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
@@ -383,7 +439,8 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                     <FormLabel>Assigned Collection Officer</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      value={field.value || ""}
+                      value={field.value || ""} // Ensure value is a string
+                      disabled={!collectionOfficers.length} // Disable if officers haven't loaded
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -391,8 +448,19 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
+                        {/* Add an option for unassigned */}
+                        <SelectItem value="none">Unassigned</SelectItem>
+                        {!collectionOfficers.length && (
+                          <SelectItem value="none" disabled>
+                            Loading officers...
+                          </SelectItem>
+                        )}
                         {collectionOfficers.map((officer) => (
-                          <SelectItem key={officer.id} value={officer.id}>
+                          // Value must be string for SelectItem
+                          <SelectItem
+                            key={officer.id}
+                            value={String(officer.id)}
+                          >
                             {officer.first_name} {officer.last_name}
                           </SelectItem>
                         ))}
@@ -420,6 +488,9 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                           step="0.01"
                           placeholder="1000.00"
                           {...field}
+                          // Ensure value is string for input, handle potential non-string state
+                          value={String(field.value || "")}
+                          onChange={(e) => field.onChange(e.target.value)} // Let Zod handle transform
                         />
                       </FormControl>
                       <FormMessage />
@@ -439,6 +510,8 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                           step="0.01"
                           placeholder="5.00"
                           {...field}
+                          value={String(field.value || "")}
+                          onChange={(e) => field.onChange(e.target.value)}
                         />
                       </FormControl>
                       <FormMessage />
@@ -453,7 +526,13 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                     <FormItem>
                       <FormLabel>Term (Months) *</FormLabel>
                       <FormControl>
-                        <Input type="number" placeholder="12" {...field} />
+                        <Input
+                          type="number"
+                          placeholder="12"
+                          {...field}
+                          value={String(field.value || "")}
+                          onChange={(e) => field.onChange(e.target.value)}
+                        />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -474,21 +553,13 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value={PaymentFrequency.DAILY}>
-                          Daily
-                        </SelectItem>
-                        <SelectItem value={PaymentFrequency.WEEKLY}>
-                          Weekly
-                        </SelectItem>
-                        <SelectItem value={PaymentFrequency.BIWEEKLY}>
-                          Bi-weekly
-                        </SelectItem>
-                        <SelectItem value={PaymentFrequency.MONTHLY}>
-                          Monthly
-                        </SelectItem>
-                        <SelectItem value={PaymentFrequency.QUARTERLY}>
-                          Quarterly
-                        </SelectItem>
+                        {Object.values(PaymentFrequency).map((freq) => (
+                          <SelectItem key={freq} value={freq}>
+                            {/* Simple Capitalization for display */}
+                            {freq.charAt(0).toUpperCase() +
+                              freq.slice(1).toLowerCase()}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormDescription>
@@ -500,12 +571,16 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
               />
 
               {/* Dates */}
+              {/* Date fields remain largely the same, just ensure field.value is handled correctly */}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                {/* Application Date */}
                 <FormField
                   control={form.control}
                   name="application_date"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem className="flex flex-col pt-2">
+                      {" "}
+                      {/* Added pt-2 for better alignment */}
                       <FormLabel>Application Date *</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -518,7 +593,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                               )}
                             >
                               {field.value ? (
-                                format(field.value, "PPP")
+                                format(field.value, "PPP") // PPP format e.g., Jan 1, 2023
                               ) : (
                                 <span>Pick a date</span>
                               )}
@@ -532,6 +607,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                             selected={field.value}
                             onSelect={field.onChange}
                             initialFocus
+                            // disabled={(date) => date > new Date() || date < new Date("1900-01-01")} // Optional: date constraints
                           />
                         </PopoverContent>
                       </Popover>
@@ -540,11 +616,12 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                   )}
                 />
 
+                {/* Approval Date */}
                 <FormField
                   control={form.control}
                   name="approval_date"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem className="flex flex-col pt-2">
                       <FormLabel>Approval Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -568,7 +645,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
-                            selected={field.value || undefined}
+                            selected={field.value || undefined} // Handle null value
                             onSelect={field.onChange}
                             initialFocus
                           />
@@ -579,11 +656,12 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                   )}
                 />
 
+                {/* Disbursement Date */}
                 <FormField
                   control={form.control}
                   name="disbursement_date"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem className="flex flex-col pt-2">
                       <FormLabel>Disbursement Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -618,11 +696,12 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                   )}
                 />
 
+                {/* First Payment Date */}
                 <FormField
                   control={form.control}
                   name="first_payment_date"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem className="flex flex-col pt-2">
                       <FormLabel>First Payment Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -657,11 +736,12 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                   )}
                 />
 
+                {/* Maturity Date */}
                 <FormField
                   control={form.control}
                   name="maturity_date"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
+                    <FormItem className="flex flex-col pt-2">
                       <FormLabel>Maturity Date</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -697,6 +777,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                 />
               </div>
 
+              {/* Notes */}
               <FormField
                 control={form.control}
                 name="notes"
@@ -707,6 +788,7 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                       <Textarea
                         placeholder="Enter any additional notes about the loan"
                         {...field}
+                        value={field.value || ""} // Ensure value is string
                         rows={3}
                       />
                     </FormControl>
@@ -715,15 +797,24 @@ export default function EditLoanPage({ params }: { params: { id: string } }) {
                 )}
               />
             </CardContent>
-            <CardFooter className="flex justify-between">
+            <CardFooter className="flex justify-end gap-2">
+              {" "}
+              {/* Use justify-end and gap */}
               <Button
+                type="button" // Set type to button to prevent form submission
                 variant="outline"
-                onClick={() => router.push(`/loans/${params.id}`)}
+                // Use resolved loanId
+                onClick={() => router.push(backLinkHref)}
                 disabled={isSubmitting}
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                disabled={isSubmitting || !form.formState.isDirty}
+              >
+                {" "}
+                {/* Disable if not submitting or form unchanged */}
                 {isSubmitting ? "Saving..." : "Save Changes"}
               </Button>
             </CardFooter>
